@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Plus, UserPlus, Phone, Calendar, Scissors, Camera,
   ChevronLeft, Check, Trash2, Edit2, ExternalLink, Clock,
@@ -40,6 +40,10 @@ export default function App() {
   const [proximosRetornos, setProximosRetornos] = useState([]);
   const [agendamentos, setAgendamentos] = useState([]);
   const [stats, setStats] = useState({ totalClientes: 0, totalAtendimentos: 0, atendimentosMes: 0 });
+  const [activeClient, setActiveClient] = useState(null);
+  const [allDbClients, setAllDbClients] = useState([]);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Admin Database states
   const [barbeirosList, setBarbeirosList] = useState([]);
@@ -57,27 +61,63 @@ export default function App() {
   const [lightboxImage, setLightboxImage] = useState(null);
 
   // Load database content on init & update
-  const refreshData = () => {
+  const refreshData = useCallback(async () => {
     if (!currentUser) return;
-    if (currentUser.role === 'admin') {
-      setBarbeirosList(db.adminGetBarbeiros());
-      setAdminGlobalStats(db.adminGetGlobalStats());
-    } else {
-      setClientes(db.getClientes(currentUser.id, searchQuery));
-      setProximosRetornos(db.getProximosRetornos(currentUser.id));
-      setStats(db.getStats(currentUser.id));
-      setAgendamentos(db.getAgendamentos(currentUser.id, selectedDate));
+    setIsDataLoading(true);
+    try {
+      if (currentUser.role === 'admin') {
+        const [barbeiros, globalStats] = await Promise.all([
+          db.adminGetBarbeiros(),
+          db.adminGetGlobalStats()
+        ]);
+        setBarbeirosList(barbeiros);
+        setAdminGlobalStats(globalStats);
+      } else {
+        const [clis, retornos, st, ags, allClis] = await Promise.all([
+          db.getClientes(currentUser.id, searchQuery),
+          db.getProximosRetornos(currentUser.id),
+          db.getStats(currentUser.id),
+          db.getAgendamentos(currentUser.id, selectedDate),
+          db.getClientes(currentUser.id, '')
+        ]);
+        setClientes(clis);
+        setProximosRetornos(retornos);
+        setStats(st);
+        setAgendamentos(ags);
+        setAllDbClients(allClis);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar dados do Supabase:", error);
+    } finally {
+      setIsDataLoading(false);
     }
-  };
+  }, [currentUser, searchQuery, selectedDate]);
+
+  const refreshActiveClient = useCallback(async (clientId = selectedClientId) => {
+    if (clientId && currentUser && currentUser.role !== 'admin') {
+      try {
+        const res = await db.getCliente(currentUser.id, clientId);
+        setActiveClient(res);
+      } catch (error) {
+        console.error("Erro ao buscar cliente ativo:", error);
+      }
+    } else {
+      setActiveClient(null);
+    }
+  }, [selectedClientId, currentUser]);
 
   useEffect(() => {
     if (currentUser) {
       refreshData();
     }
-  }, [searchQuery, selectedDate, currentUser]);
+  }, [currentUser, refreshData]);
+
+  useEffect(() => {
+    refreshActiveClient(selectedClientId);
+  }, [selectedClientId, refreshActiveClient]);
 
   // Auth Form Handlers
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
     if (!authForm.email || !authForm.senha) {
@@ -85,14 +125,22 @@ export default function App() {
       return;
     }
 
-    const session = db.login(authForm.email, authForm.senha);
-    if (session) {
-      setCurrentUser(session);
-      localStorage.setItem('barbermemo_user', JSON.stringify(session));
-      setAuthForm({ email: '', senha: '' });
-      setAdminTab('barbeiros'); // reset admin tab on login
-    } else {
-      setAuthError('E-mail ou senha incorretos.');
+    setIsSaving(true);
+    try {
+      const session = await db.login(authForm.email, authForm.senha);
+      if (session) {
+        setCurrentUser(session);
+        localStorage.setItem('barbermemo_user', JSON.stringify(session));
+        setAuthForm({ email: '', senha: '' });
+        setAdminTab('barbeiros'); // reset admin tab on login
+      } else {
+        setAuthError('E-mail ou senha incorretos.');
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthError('Erro ao conectar com o banco de dados.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -106,7 +154,7 @@ export default function App() {
   };
 
   // Admin CRUD Actions
-  const handleAdminSaveBarber = (e) => {
+  const handleAdminSaveBarber = async (e) => {
     e.preventDefault();
     setAdminError('');
     if (!adminBarberForm.nome.trim() || !adminBarberForm.email.trim() || !adminBarberForm.senha.trim() || !adminBarberForm.barbeariaName.trim()) {
@@ -114,19 +162,22 @@ export default function App() {
       return;
     }
 
+    setIsSaving(true);
     try {
       if (editingBarberId) {
-        db.adminUpdateBarbeiro(editingBarberId, adminBarberForm);
+        await db.adminUpdateBarbeiro(editingBarberId, adminBarberForm);
       } else {
-        db.adminAddBarbeiro(adminBarberForm);
+        await db.adminAddBarbeiro(adminBarberForm);
       }
       // Reset Form
       setAdminBarberForm({ nome: '', email: '', senha: '', barbeariaName: '' });
       setEditingBarberId(null);
       setShowAdminForm(false);
-      refreshData();
+      await refreshData();
     } catch (err) {
       setAdminError(err.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -141,75 +192,116 @@ export default function App() {
     setShowAdminForm(true);
   };
 
-  const handleAdminDeleteClick = (id) => {
+  const handleAdminDeleteClick = async (id) => {
     if (confirm("ATENÇÃO: Deletar este barbeiro excluirá permanentemente todos os clientes cadastrados por ele, suas fichas de cortes, fotos e agendamentos. Deseja prosseguir?")) {
-      db.adminDeleteBarbeiro(id);
-      refreshData();
+      setIsSaving(true);
+      try {
+        await db.adminDeleteBarbeiro(id);
+        await refreshData();
+      } catch (err) {
+        console.error("Erro ao deletar barbeiro:", err);
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
   // Form submit handlers (Barbers)
-  const handleSaveClient = (e) => {
+  const handleSaveClient = async (e) => {
     e.preventDefault();
     if (!clientForm.nome.trim() || !clientForm.telefone.trim()) {
       alert("Por favor, preencha o nome e o WhatsApp do cliente.");
       return;
     }
-    const newCli = db.addCliente(currentUser.id, clientForm);
-    setClientForm({ nome: '', telefone: '', intervaloDiasRetorno: 20 });
-    refreshData();
+    setIsSaving(true);
+    try {
+      const newCli = await db.addCliente(currentUser.id, clientForm);
+      setClientForm({ nome: '', telefone: '', intervaloDiasRetorno: 20 });
+      await refreshData();
 
-    if (cameFromAppointment) {
-      setAppointmentForm(prev => ({ ...prev, clienteId: newCli.id }));
-      setAppFormSearch(newCli.nome);
-      setCameFromAppointment(false);
-      setCurrentView('new-appointment');
-    } else {
-      setSelectedClientId(newCli.id);
-      setCurrentView('client-profile');
+      if (cameFromAppointment) {
+        setAppointmentForm(prev => ({ ...prev, clienteId: newCli.id }));
+        setAppFormSearch(newCli.nome);
+        setCameFromAppointment(false);
+        setCurrentView('new-appointment');
+      } else {
+        setSelectedClientId(newCli.id);
+        setCurrentView('client-profile');
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao cadastrar cliente.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleUpdateClient = (e) => {
+  const handleUpdateClient = async (e) => {
     e.preventDefault();
     if (!clientForm.nome.trim() || !clientForm.telefone.trim()) {
       alert("Por favor, preencha o nome e o WhatsApp.");
       return;
     }
-    db.updateCliente(currentUser.id, selectedClientId, clientForm);
-    setCurrentView('client-profile');
-    refreshData();
-  };
-
-  const handleDeleteClient = (id) => {
-    if (confirm("Tem certeza que deseja excluir este cliente e todo o histórico dele? Esta ação é irreversível.")) {
-      db.deleteCliente(currentUser.id, id);
-      setSelectedClientId(null);
-      setCurrentView('dashboard');
-      refreshData();
+    setIsSaving(true);
+    try {
+      await db.updateCliente(currentUser.id, selectedClientId, clientForm);
+      await refreshActiveClient(selectedClientId);
+      setCurrentView('client-profile');
+      await refreshData();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao atualizar cliente.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleSaveAttendance = (e) => {
-    e.preventDefault();
-    db.addAtendimento(currentUser.id, {
-      clienteId: selectedClientId,
-      laterais: attendanceForm.laterais,
-      topo: attendanceForm.topo,
-      barba: attendanceForm.barba,
-      produtos: attendanceForm.produtos,
-      fotos: selectedPhotos
-    });
+  const handleDeleteClient = async (id) => {
+    if (confirm("Tem certeza que deseja excluir este cliente e todo o histórico dele? Esta ação é irreversível.")) {
+      setIsSaving(true);
+      try {
+        await db.deleteCliente(currentUser.id, id);
+        setSelectedClientId(null);
+        setCurrentView('dashboard');
+        await refreshData();
+      } catch (err) {
+        console.error(err);
+        alert("Erro ao excluir cliente.");
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
 
-    // Reset forms
-    setAttendanceForm({ laterais: '', topo: '', barba: '', produtos: '' });
-    setSelectedPhotos([]);
-    setCurrentView('client-profile');
-    refreshData();
+  const handleSaveAttendance = async (e) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await db.addAtendimento(currentUser.id, {
+        clienteId: selectedClientId,
+        laterais: attendanceForm.laterais,
+        topo: attendanceForm.topo,
+        barba: attendanceForm.barba,
+        produtos: attendanceForm.produtos,
+        fotos: selectedPhotos
+      });
+
+      // Reset forms
+      setAttendanceForm({ laterais: '', topo: '', barba: '', produtos: '' });
+      setSelectedPhotos([]);
+      await refreshActiveClient(selectedClientId);
+      setCurrentView('client-profile');
+      await refreshData();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao salvar atendimento.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Scheduling Form Submit Handler
-  const handleSaveAppointment = (e) => {
+  const handleSaveAppointment = async (e) => {
     e.preventDefault();
     if (!appointmentForm.clienteId) {
       alert("Por favor, selecione um cliente.");
@@ -220,32 +312,48 @@ export default function App() {
       return;
     }
 
-    const datetimeStr = `${appointmentForm.data}T${appointmentForm.hora}:00`;
-    db.addAgendamento(currentUser.id, {
-      clienteId: appointmentForm.clienteId,
-      dataHora: new Date(datetimeStr).toISOString(),
-      servicos: appointmentForm.servicos
-    });
+    setIsSaving(true);
+    try {
+      const datetimeStr = `${appointmentForm.data}T${appointmentForm.hora}:00`;
+      await db.addAgendamento(currentUser.id, {
+        clienteId: appointmentForm.clienteId,
+        dataHora: new Date(datetimeStr).toISOString(),
+        servicos: appointmentForm.servicos
+      });
 
-    // Reset
-    setAppointmentForm({ clienteId: '', data: getTodayStr(), hora: '09:00', servicos: 'Corte' });
-    setAppFormSearch('');
+      // Reset
+      setAppointmentForm({ clienteId: '', data: getTodayStr(), hora: '09:00', servicos: 'Corte' });
+      setAppFormSearch('');
 
-    // Redirect to agenda
-    setCurrentView('agenda');
-    setSidebarTab('agenda');
-    refreshData();
+      // Redirect to agenda
+      setCurrentView('agenda');
+      setSidebarTab('agenda');
+      await refreshData();
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao salvar agendamento.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleToggleAppointmentStatus = (id, newStatus) => {
-    db.updateAgendamentoStatus(currentUser.id, id, newStatus);
-    refreshData();
+  const handleToggleAppointmentStatus = async (id, newStatus) => {
+    try {
+      await db.updateAgendamentoStatus(currentUser.id, id, newStatus);
+      await refreshData();
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const handleDeleteAppointment = (id) => {
+  const handleDeleteAppointment = async (id) => {
     if (confirm("Deseja cancelar/excluir este agendamento?")) {
-      db.deleteAgendamento(currentUser.id, id);
-      refreshData();
+      try {
+        await db.deleteAgendamento(currentUser.id, id);
+        await refreshData();
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
@@ -368,8 +476,6 @@ export default function App() {
     return days;
   };
 
-  const activeClient = (selectedClientId && currentUser && currentUser.role !== 'admin') ? db.getCliente(currentUser.id, selectedClientId) : null;
-  const allDbClients = (currentUser && currentUser.role !== 'admin') ? db.getClientes(currentUser.id, '') : [];
   const filteredClientsForAppointment = appFormSearch.trim()
     ? allDbClients.filter(c => c.nome.toLowerCase().includes(appFormSearch.toLowerCase()) || c.telefone.includes(appFormSearch))
     : allDbClients.slice(0, 5);
@@ -770,8 +876,8 @@ export default function App() {
             <div>
               <h1 className="text-sm font-bold tracking-tight cursor-pointer">BarberMemo</h1>
               <p className="text-[10px] text-barber-text-secondary flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Barbeiro: {currentUser.nome} {currentUser.barbeariaName ? `(${currentUser.barbeariaName})` : ''}
+                <span className={`w-1.5 h-1.5 rounded-full ${isDataLoading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
+                {isDataLoading ? 'Sincronizando...' : `Barbeiro: ${currentUser.nome} ${currentUser.barbeariaName ? `(${currentUser.barbeariaName})` : ''}`}
               </p>
             </div>
           </div>
@@ -883,8 +989,7 @@ export default function App() {
                 <div className="bg-barber-card border border-barber-border rounded-xl divide-y divide-barber-border overflow-hidden">
                   {clientes.length > 0 ? (
                     clientes.map((c) => {
-                      const clientDetails = db.getCliente(currentUser.id, c.id);
-                      const lastCut = clientDetails.atendimentos[0];
+                      const lastCut = c.lastCut;
                       return (
                         <div
                           key={c.id}
@@ -1587,7 +1692,10 @@ export default function App() {
               <img src="/logo.svg" alt="Logo" className="w-7 h-7 object-contain rounded-lg shadow-sm" />
               <div className="min-w-0 flex-1">
                 <h1 className="text-sm font-bold tracking-tight truncate">{currentUser.barbeariaName || 'Minha Agenda'}</h1>
-                <p className="text-[9px] text-zinc-500 truncate">Barbeiro: {currentUser.nome}</p>
+                <p className="text-[9px] text-zinc-500 truncate flex items-center gap-1">
+                  <span className={`w-1 h-1 rounded-full ${isDataLoading ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
+                  {isDataLoading ? 'Sincronizando...' : `Barbeiro: ${currentUser.nome}`}
+                </p>
               </div>
             </div>
 

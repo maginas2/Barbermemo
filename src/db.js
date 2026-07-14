@@ -1,465 +1,383 @@
-// Relational multi-tenant database simulation for BarberMemo MVP
-// Data is isolated individually per Barber (barberId)
-// Administrative accounts can manage barbers globally
+import { createClient } from '@supabase/supabase-js';
 
-const DB_KEY = 'barbermemo_db';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-const daysAgo = (num) => {
-  const d = new Date();
-  d.setDate(d.getDate() - num);
-  return d.toISOString();
-};
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-const getRelativeDateTime = (daysOffset, hour, minute) => {
-  const d = new Date();
-  d.setDate(d.getDate() + daysOffset);
-  d.setHours(hour, minute, 0, 0);
-  return d.toISOString();
-};
-
-const defaultSeedData = {
-  admins: [
-    {
-      id: 'admin-1',
-      nome: 'SaaS Admin',
-      email: 'admin@barbermemo.com',
-      senha: 'admin'
-    }
-  ],
-  barbeiros: [
-    {
-      id: 'barber-1',
-      nome: 'Fabricio',
-      email: 'fabricio@barber.com',
-      senha: '123',
-      barbeariaName: 'Confraria do Bigode'
-    },
-    {
-      id: 'barber-2',
-      nome: 'Thiago',
-      email: 'thiago@barber.com',
-      senha: '123',
-      barbeariaName: 'Barbearia Imperial'
-    }
-  ],
-  clientes: [
-    // Barber 1 Clients
-    {
-      id: 'c-1',
-      nome: 'Carlos Henrique',
-      telefone: '11988887777',
-      intervaloDiasRetorno: 20,
-      barberId: 'barber-1'
-    },
-    {
-      id: 'c-2',
-      nome: 'Felipe Bernardes',
-      telefone: '21977776666',
-      intervaloDiasRetorno: 30,
-      barberId: 'barber-1'
-    },
-    {
-      id: 'c-3',
-      nome: 'Guilherme Santos',
-      telefone: '31966665555',
-      intervaloDiasRetorno: 15,
-      barberId: 'barber-1'
-    },
-    {
-      id: 'c-4',
-      nome: 'Rodrigo Lima',
-      telefone: '11955554444',
-      intervaloDiasRetorno: 25,
-      barberId: 'barber-1'
-    },
-    {
-      id: 'c-5',
-      nome: 'Matheus Andrade',
-      telefone: '11944443333',
-      intervaloDiasRetorno: 30,
-      barberId: 'barber-1'
-    },
-    // Barber 2 Clients
-    {
-      id: 'c-10',
-      nome: 'Renato Silva',
-      telefone: '11922221111',
-      intervaloDiasRetorno: 30,
-      barberId: 'barber-2'
-    },
-    {
-      id: 'c-11',
-      nome: 'Claudio Souza',
-      telefone: '11933332222',
-      intervaloDiasRetorno: 20,
-      barberId: 'barber-2'
-    }
-  ],
-  atendimentos: [
-    // Barber 1 Cut History
-    {
-      id: 'a-1',
-      clienteId: 'c-1',
-      data: daysAgo(22),
-      laterais: 'Degradê na 1',
-      topo: 'Três dedos texturizado',
-      barba: 'Cerrada alinhada',
-      produtos: 'Pomada Matte Redken',
-      fotos: ['/seed_fade.png', '/seed_beard.png']
-    },
-    {
-      id: 'a-2',
-      clienteId: 'c-1',
-      data: daysAgo(42),
-      laterais: 'Degradê na 1',
-      topo: 'Quatro dedos natural',
-      barba: 'Alinhada com navalha',
-      produtos: 'Pomada Matte Redken',
-      fotos: []
-    },
-    {
-      id: 'a-3',
-      clienteId: 'c-2',
-      data: daysAgo(48),
-      laterais: 'Disfarçado Navalhado',
-      topo: 'Social alto',
-      barba: 'Tamanho médio com óleo',
-      produtos: 'Óleo Beard Brand',
-      fotos: ['/seed_pompadour.png']
-    },
-    {
-      id: 'a-4',
-      clienteId: 'c-3',
-      data: daysAgo(5),
-      laterais: 'Militar na 2',
-      topo: 'Buzzcut texturizado',
-      barba: 'Sem barba',
-      produtos: 'Sem produto',
-      fotos: []
-    },
-    {
-      id: 'a-5',
-      clienteId: 'c-4',
-      data: daysAgo(26),
-      laterais: 'Social na tesoura',
-      topo: 'Na tesoura médio',
-      barba: 'Cavanhaque desenhado',
-      produtos: 'Balm Beard',
-      fotos: []
-    },
-    // Barber 2 Cut History
-    {
-      id: 'a-10',
-      clienteId: 'c-10',
-      data: daysAgo(10),
-      laterais: 'Degradê Navalhado',
-      topo: 'Pompadour',
-      barba: 'Cheia alinhada',
-      produtos: 'Óleo Beard Brand',
-      fotos: ['/seed_pompadour.png']
-    }
-  ],
-  agendamentos: [
-    // Barber 1 Appointments
-    {
-      id: 'ag-1',
-      clienteId: 'c-1',
-      dataHora: getRelativeDateTime(0, 9, 30),
-      servicos: 'Corte + Barba',
-      status: 'Pendente',
-      barberId: 'barber-1'
-    },
-    {
-      id: 'ag-2',
-      clienteId: 'c-2',
-      dataHora: getRelativeDateTime(0, 11, 0),
-      servicos: 'Corte',
-      status: 'Confirmado',
-      barberId: 'barber-1'
-    },
-    {
-      id: 'ag-3',
-      clienteId: 'c-3',
-      dataHora: getRelativeDateTime(0, 15, 0),
-      servicos: 'Barba',
-      status: 'Concluído',
-      barberId: 'barber-1'
-    },
-    {
-      id: 'ag-4',
-      clienteId: 'c-4',
-      dataHora: getRelativeDateTime(1, 10, 0),
-      servicos: 'Corte + Barba',
-      status: 'Pendente',
-      barberId: 'barber-1'
-    },
-    {
-      id: 'ag-5',
-      clienteId: 'c-5',
-      dataHora: getRelativeDateTime(1, 16, 30),
-      servicos: 'Sobrancelha',
-      status: 'Pendente',
-      barberId: 'barber-1'
-    },
-    // Barber 2 Appointments
-    {
-      id: 'ag-10',
-      clienteId: 'c-11',
-      dataHora: getRelativeDateTime(0, 13, 0),
-      servicos: 'Corte + Barba',
-      status: 'Pendente',
-      barberId: 'barber-2'
-    }
-  ]
-};
-
-// Initialize database
-function initDB() {
-  const existing = localStorage.getItem(DB_KEY);
-  if (!existing) {
-    localStorage.setItem(DB_KEY, JSON.stringify(defaultSeedData));
-    return defaultSeedData;
+// Helper to convert base64 to Blob for Supabase Storage upload
+function base64ToBlob(base64, mimeType) {
+  const byteCharacters = atob(base64.split(',')[1]);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
   }
-  try {
-    const parsed = JSON.parse(existing);
-    // Force reset if DB format is older or missing admins collection
-    if (!parsed.barbeiros || !parsed.admins) {
-      localStorage.setItem(DB_KEY, JSON.stringify(defaultSeedData));
-      return defaultSeedData;
-    }
-    return parsed;
-  } catch (e) {
-    localStorage.setItem(DB_KEY, JSON.stringify(defaultSeedData));
-    return defaultSeedData;
-  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: mimeType });
 }
 
-function getDB() {
-  return initDB();
-}
+// Mappers to transform snake_case database schema to camelCase frontend schema
+const mapUser = (u) => {
+  if (!u) return null;
+  return {
+    id: u.id,
+    nome: u.nome,
+    email: u.email,
+    senha: u.senha,
+    barbeariaName: u.barbearia_name,
+    role: u.role
+  };
+};
 
-function saveDB(data) {
-  localStorage.setItem(DB_KEY, JSON.stringify(data));
-}
+const mapClient = (c) => {
+  if (!c) return null;
+  return {
+    id: c.id,
+    nome: c.nome,
+    telefone: c.telefone,
+    intervaloDiasRetorno: c.intervalo_dias_retorno,
+    barberId: c.barber_id
+  };
+};
+
+const mapAtendimento = (a) => {
+  if (!a) return null;
+  return {
+    id: a.id,
+    clienteId: a.cliente_id,
+    data: a.data,
+    laterais: a.laterais,
+    topo: a.topo,
+    barba: a.barba,
+    produtos: a.produtos,
+    fotos: a.fotos || []
+  };
+};
+
+const mapAgendamento = (ag) => {
+  if (!ag) return null;
+  return {
+    id: ag.id,
+    clienteId: ag.cliente_id,
+    dataHora: ag.data_hora,
+    servicos: ag.servicos,
+    status: ag.status,
+    barberId: ag.barber_id,
+    cliente: ag.clientes ? mapClient(ag.clientes) : undefined
+  };
+};
 
 export const db = {
   // Authentication APIs
-  login: (email, senha) => {
-    const data = getDB();
+  login: async (email, senha) => {
     const cleanEmail = email.toLowerCase().trim();
-    
-    // Check if it's admin first
-    const admin = data.admins && data.admins.find(a => a.email.toLowerCase() === cleanEmail && a.senha === senha);
-    if (admin) {
-      return {
-        id: admin.id,
-        nome: admin.nome,
-        email: admin.email,
-        role: 'admin'
-      };
-    }
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('email', cleanEmail)
+      .eq('senha', senha)
+      .maybeSingle();
 
-    // Check if it's a barber
-    const barbeiro = data.barbeiros.find(b => b.email.toLowerCase() === cleanEmail && b.senha === senha);
-    if (!barbeiro) return null;
-    
-    return {
-      id: barbeiro.id,
-      nome: barbeiro.nome,
-      email: barbeiro.email,
-      barbeariaName: barbeiro.barbeariaName,
-      role: 'barbeiro'
-    };
+    if (error) throw error;
+    return mapUser(data);
   },
 
   // Admin APIs
-  adminGetBarbeiros: () => {
-    const data = getDB();
-    return data.barbeiros || [];
+  adminGetBarbeiros: async () => {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('role', 'barbeiro')
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(mapUser);
   },
 
-  adminAddBarbeiro: (barber) => {
-    const data = getDB();
+  adminAddBarbeiro: async (barber) => {
     const cleanEmail = barber.email.toLowerCase().trim();
     
-    if (data.barbeiros.some(b => b.email.toLowerCase() === cleanEmail)) {
-      throw new Error("Este e-mail de barbeiro já está cadastrado.");
-    }
-    if (data.admins && data.admins.some(a => a.email.toLowerCase() === cleanEmail)) {
-      throw new Error("Este e-mail pertence a uma conta de administrador.");
+    // Check if email already exists
+    const { data: existing, error: checkError } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+    if (existing) {
+      throw new Error("Este e-mail já está cadastrado.");
     }
 
-    const newBarber = {
-      id: 'barber-' + Date.now(),
-      nome: barber.nome,
-      email: cleanEmail,
-      senha: barber.senha,
-      barbeariaName: barber.barbeariaName
-    };
+    const { data, error } = await supabase
+      .from('usuarios')
+      .insert({
+        nome: barber.nome,
+        email: cleanEmail,
+        senha: barber.senha,
+        barbearia_name: barber.barbeariaName,
+        role: 'barbeiro'
+      })
+      .select()
+      .single();
 
-    data.barbeiros.push(newBarber);
-    saveDB(data);
-    return newBarber;
+    if (error) throw error;
+    return mapUser(data);
   },
 
-  adminUpdateBarbeiro: (id, fields) => {
-    const data = getDB();
-    const idx = data.barbeiros.findIndex(b => b.id === id);
-    if (idx === -1) return null;
-    
+  adminUpdateBarbeiro: async (id, fields) => {
     const cleanEmail = fields.email.toLowerCase().trim();
-    if (data.barbeiros.some(b => b.id !== id && b.email.toLowerCase() === cleanEmail)) {
-      throw new Error("Este e-mail já está em uso por outro barbeiro.");
+
+    // Check if email is in use by another user
+    const { data: existing, error: checkError } = await supabase
+      .from('usuarios')
+      .select('id')
+      .eq('email', cleanEmail)
+      .neq('id', id)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+    if (existing) {
+      throw new Error("Este e-mail já está em uso por outro usuário.");
     }
 
-    data.barbeiros[idx] = {
-      ...data.barbeiros[idx],
-      nome: fields.nome,
-      email: cleanEmail,
-      senha: fields.senha,
-      barbeariaName: fields.barbeariaName
-    };
+    const { data, error } = await supabase
+      .from('usuarios')
+      .update({
+        nome: fields.nome,
+        email: cleanEmail,
+        senha: fields.senha,
+        barbearia_name: fields.barbeariaName
+      })
+      .eq('id', id)
+      .select()
+      .single();
 
-    saveDB(data);
-    return data.barbeiros[idx];
+    if (error) throw error;
+    return mapUser(data);
   },
 
-  adminDeleteBarbeiro: (id) => {
-    const data = getDB();
-    const exists = data.barbeiros.some(b => b.id === id);
-    if (!exists) return false;
+  adminDeleteBarbeiro: async (id) => {
+    const { error } = await supabase
+      .from('usuarios')
+      .delete()
+      .eq('id', id);
 
-    // Filter out barber
-    data.barbeiros = data.barbeiros.filter(b => b.id !== id);
-
-    // Cascade delete clients, cuts (atendimentos), and appointments (agendamentos)
-    const barberClients = data.clientes.filter(c => c.barberId === id);
-    const barberClientIds = new Set(barberClients.map(c => c.id));
-
-    data.clientes = data.clientes.filter(c => c.barberId !== id);
-    data.agendamentos = data.agendamentos.filter(ag => ag.barberId !== id);
-    data.atendimentos = data.atendimentos.filter(a => !barberClientIds.has(a.clienteId));
-
-    saveDB(data);
+    if (error) throw error;
     return true;
   },
 
-  adminGetGlobalStats: () => {
-    const data = getDB();
+  adminGetGlobalStats: async () => {
+    const [barbeirosRes, clientesRes, atendimentosRes, agendamentosRes] = await Promise.all([
+      supabase.from('usuarios').select('id', { count: 'exact', head: true }).eq('role', 'barbeiro'),
+      supabase.from('clientes').select('id', { count: 'exact', head: true }),
+      supabase.from('atendimentos').select('id', { count: 'exact', head: true }),
+      supabase.from('agendamentos').select('id', { count: 'exact', head: true })
+    ]);
+
+    if (barbeirosRes.error) throw barbeirosRes.error;
+    if (clientesRes.error) throw clientesRes.error;
+    if (atendimentosRes.error) throw atendimentosRes.error;
+    if (agendamentosRes.error) throw agendamentosRes.error;
+
     return {
-      totalBarbeiros: data.barbeiros.length,
-      totalClientes: data.clientes.length,
-      totalAtendimentos: data.atendimentos.length,
-      totalAgendamentos: data.agendamentos.length
+      totalBarbeiros: barbeirosRes.count || 0,
+      totalClientes: clientesRes.count || 0,
+      totalAtendimentos: atendimentosRes.count || 0,
+      totalAgendamentos: agendamentosRes.count || 0
     };
   },
 
-  // Barber APIs
-  getClientes: (barberId, query = '') => {
-    const data = getDB();
+  getClientes: async (barberId, query = '') => {
     const cleanQuery = query.toLowerCase().trim();
-    const barberClients = data.clientes.filter(c => c.barberId === barberId);
+    let dbQuery = supabase
+      .from('clientes')
+      .select('*, atendimentos(id, data, laterais)')
+      .eq('barber_id', barberId);
+
+    if (cleanQuery) {
+      // In Supabase, if query is present, we can filter using `or` and `ilike`
+      dbQuery = dbQuery.or(`nome.ilike.%${cleanQuery}%,telefone.like.%${cleanQuery}%`);
+    }
+
+    const { data, error } = await dbQuery.order('nome', { ascending: true });
+    if (error) throw error;
     
-    if (!cleanQuery) return barberClients;
-    return barberClients.filter(c => 
-      c.nome.toLowerCase().includes(cleanQuery) || 
-      c.telefone.includes(cleanQuery)
-    );
-  },
-
-  getCliente: (barberId, id) => {
-    const data = getDB();
-    const cliente = data.clientes.find(c => c.id === id && c.barberId === barberId);
-    if (!cliente) return null;
-    const atendimentos = data.atendimentos
-      .filter(a => a.clienteId === id)
-      .sort((a, b) => new Date(b.data) - new Date(a.data));
-    return { ...cliente, atendimentos };
-  },
-
-  addCliente: (barberId, cliente) => {
-    const data = getDB();
-    const newCliente = {
-      id: 'c-' + Date.now(),
-      nome: cliente.nome,
-      telefone: cliente.telefone.replace(/\D/g, ''),
-      intervaloDiasRetorno: parseInt(cliente.intervaloDiasRetorno, 10) || 30,
-      barberId: barberId
-    };
-    data.clientes.push(newCliente);
-    saveDB(data);
-    return newCliente;
-  },
-
-  updateCliente: (barberId, id, updatedFields) => {
-    const data = getDB();
-    const idx = data.clientes.findIndex(c => c.id === id && c.barberId === barberId);
-    if (idx === -1) return null;
-    data.clientes[idx] = {
-      ...data.clientes[idx],
-      ...updatedFields,
-      telefone: updatedFields.telefone ? updatedFields.telefone.replace(/\D/g, '') : data.clientes[idx].telefone,
-      intervaloDiasRetorno: updatedFields.intervaloDiasRetorno ? parseInt(updatedFields.intervaloDiasRetorno, 10) : data.clientes[idx].intervaloDiasRetorno
-    };
-    saveDB(data);
-    return data.clientes[idx];
-  },
-
-  deleteCliente: (barberId, id) => {
-    const data = getDB();
-    const exists = data.clientes.some(c => c.id === id && c.barberId === barberId);
-    if (!exists) return false;
-
-    data.clientes = data.clientes.filter(c => c.id !== id);
-    data.atendimentos = data.atendimentos.filter(a => a.clienteId !== id);
-    data.agendamentos = data.agendamentos.filter(ag => ag.clienteId !== id);
-    saveDB(data);
-    return true;
-  },
-
-  addAtendimento: (barberId, atendimento) => {
-    const data = getDB();
-    const clientExists = data.clientes.some(c => c.id === atendimento.clienteId && c.barberId === barberId);
-    if (!clientExists) return null;
-
-    const newAtendimento = {
-      id: 'a-' + Date.now(),
-      clienteId: atendimento.clienteId,
-      data: new Date().toISOString(),
-      laterais: atendimento.laterais || '',
-      topo: atendimento.topo || '',
-      barba: atendimento.barba || '',
-      produtos: atendimento.produtos || '',
-      fotos: atendimento.fotos || []
-    };
-    data.atendimentos.push(newAtendimento);
-    
-    const todayStr = new Date().toISOString().split('T')[0];
-    data.agendamentos = data.agendamentos.map(ag => {
-      const agDateStr = new Date(ag.dataHora).toISOString().split('T')[0];
-      if (ag.clienteId === atendimento.clienteId && agDateStr === todayStr && ag.status !== 'Concluído' && ag.barberId === barberId) {
-        return { ...ag, status: 'Concluído' };
-      }
-      return ag;
-    });
-
-    saveDB(data);
-    return newAtendimento;
-  },
-
-  getProximosRetornos: (barberId) => {
-    const data = getDB();
-    const barberClients = data.clientes.filter(c => c.barberId === barberId);
-    const list = [];
-    
-    barberClients.forEach(cliente => {
-      const clientCuts = data.atendimentos
-        .filter(a => a.clienteId === cliente.id)
+    return (data || []).map(c => {
+      const clientCuts = (c.atendimentos || [])
         .sort((a, b) => new Date(b.data) - new Date(a.data));
       
+      const mapped = mapClient(c);
+      if (clientCuts.length > 0) {
+        mapped.lastCut = mapAtendimento(clientCuts[0]);
+      } else {
+        mapped.lastCut = null;
+      }
+      return mapped;
+    });
+  },
+
+  getCliente: async (barberId, id) => {
+    const { data: cliente, error: clientError } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('id', id)
+      .eq('barber_id', barberId)
+      .maybeSingle();
+
+    if (clientError) throw clientError;
+    if (!cliente) return null;
+
+    const { data: atendimentos, error: atendError } = await supabase
+      .from('atendimentos')
+      .select('*')
+      .eq('cliente_id', id)
+      .order('data', { ascending: false });
+
+    if (atendError) throw atendError;
+
+    return {
+      ...mapClient(cliente),
+      atendimentos: (atendimentos || []).map(mapAtendimento)
+    };
+  },
+
+  addCliente: async (barberId, cliente) => {
+    const { data, error } = await supabase
+      .from('clientes')
+      .insert({
+        nome: cliente.nome,
+        telefone: cliente.telefone.replace(/\D/g, ''),
+        intervalo_dias_retorno: parseInt(cliente.intervaloDiasRetorno, 10) || 30,
+        barber_id: barberId
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return mapClient(data);
+  },
+
+  updateCliente: async (barberId, id, updatedFields) => {
+    const { data, error } = await supabase
+      .from('clientes')
+      .update({
+        nome: updatedFields.nome,
+        telefone: updatedFields.telefone ? updatedFields.telefone.replace(/\D/g, '') : undefined,
+        intervalo_dias_retorno: updatedFields.intervaloDiasRetorno ? parseInt(updatedFields.intervaloDiasRetorno, 10) : undefined
+      })
+      .eq('id', id)
+      .eq('barber_id', barberId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return mapClient(data);
+  },
+
+  deleteCliente: async (barberId, id) => {
+    const { error } = await supabase
+      .from('clientes')
+      .delete()
+      .eq('id', id)
+      .eq('barber_id', barberId);
+
+    if (error) throw error;
+    return true;
+  },
+
+  addAtendimento: async (barberId, atendimento) => {
+    // Check if client belongs to this barber
+    const { data: client, error: checkErr } = await supabase
+      .from('clientes')
+      .select('id')
+      .eq('id', atendimento.clienteId)
+      .eq('barber_id', barberId)
+      .maybeSingle();
+
+    if (checkErr) throw checkErr;
+    if (!client) throw new Error("Cliente não encontrado ou não pertence a este barbeiro.");
+
+    // Process and upload base64 images to Supabase Storage bucket 'barbermemo-photos'
+    const uploadedUrls = [];
+    if (atendimento.fotos && atendimento.fotos.length > 0) {
+      for (const foto of atendimento.fotos) {
+        if (foto.startsWith('data:image')) {
+          try {
+            const mime = foto.split(';')[0].split(':')[1];
+            const blob = base64ToBlob(foto, mime);
+            const ext = mime.split('/')[1] || 'jpg';
+            const fileName = `${barberId}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
+            
+            const { error: uploadError } = await supabase.storage
+              .from('barbermemo-photos')
+              .upload(fileName, blob, { contentType: mime });
+            
+            if (uploadError) throw uploadError;
+            
+            const { data: { publicUrl } } = supabase.storage
+              .from('barbermemo-photos')
+              .getPublicUrl(fileName);
+              
+            uploadedUrls.push(publicUrl);
+          } catch (e) {
+            console.error("Erro ao fazer upload da imagem:", e);
+          }
+        } else {
+          uploadedUrls.push(foto);
+        }
+      }
+    }
+
+    const { data: newAtend, error: atendError } = await supabase
+      .from('atendimentos')
+      .insert({
+        cliente_id: atendimento.clienteId,
+        laterais: atendimento.laterais || '',
+        topo: atendimento.topo || '',
+        barba: atendimento.barba || '',
+        produtos: atendimento.produtos || '',
+        fotos: uploadedUrls
+      })
+      .select()
+      .single();
+
+    if (atendError) throw atendError;
+
+    // Cascade complete today's pending/confirmed appointments
+    const todayStr = new Date().toISOString().split('T')[0];
+    await supabase
+      .from('agendamentos')
+      .update({ status: 'Concluído' })
+      .eq('cliente_id', atendimento.clienteId)
+      .eq('barber_id', barberId)
+      .neq('status', 'Concluído')
+      .gte('data_hora', `${todayStr}T00:00:00`)
+      .lte('data_hora', `${todayStr}T23:59:59`);
+
+    return mapAtendimento(newAtend);
+  },
+
+  getProximosRetornos: async (barberId) => {
+    // Fetch all clients of this barber and their atendimentos to compute return dates
+    const { data: clients, error } = await supabase
+      .from('clientes')
+      .select('*, atendimentos(id, data)')
+      .eq('barber_id', barberId);
+
+    if (error) throw error;
+
+    const list = [];
+    
+    (clients || []).forEach(cliente => {
+      const clientCuts = (cliente.atendimentos || [])
+        .sort((a, b) => new Date(b.data) - new Date(a.data));
+      
+      const mappedCliente = mapClient(cliente);
+
       if (clientCuts.length === 0) {
         list.push({
-          cliente,
+          cliente: mappedCliente,
           diasPassados: 999,
           diasAtrasados: 999,
           precisaRetorno: true,
@@ -471,15 +389,18 @@ export const db = {
       const lastCut = clientCuts[0];
       const timeDiff = new Date() - new Date(lastCut.data);
       const diasPassados = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-      const diasAtrasados = diasPassados - cliente.intervaloDiasRetorno;
-      const precisaRetorno = diasPassados >= (cliente.intervaloDiasRetorno - 2);
+      const diasAtrasados = diasPassados - mappedCliente.intervaloDiasRetorno;
+      const precisaRetorno = diasPassados >= (mappedCliente.intervaloDiasRetorno - 2);
       
       list.push({
-        cliente,
+        cliente: mappedCliente,
         diasPassados,
         diasAtrasados,
         precisaRetorno,
-        ultimoCorte: lastCut
+        ultimoCorte: {
+          id: lastCut.id,
+          data: lastCut.data
+        }
       });
     });
 
@@ -488,74 +409,84 @@ export const db = {
       .sort((a, b) => b.diasAtrasados - a.diasAtrasados);
   },
 
-  getAgendamentos: (barberId, dateString) => {
-    const data = getDB();
-    return data.agendamentos
-      .filter(ag => {
-        const agDate = new Date(ag.dataHora).toISOString().split('T')[0];
-        return agDate === dateString && ag.barberId === barberId;
+  getAgendamentos: async (barberId, dateString) => {
+    const { data, error } = await supabase
+      .from('agendamentos')
+      .select('*, clientes(*)')
+      .eq('barber_id', barberId)
+      .gte('data_hora', `${dateString}T00:00:00`)
+      .lte('data_hora', `${dateString}T23:59:59`);
+
+    if (error) throw error;
+    return (data || []).map(mapAgendamento);
+  },
+
+  addAgendamento: async (barberId, agendamento) => {
+    const { data, error } = await supabase
+      .from('agendamentos')
+      .insert({
+        cliente_id: agendamento.clienteId,
+        data_hora: agendamento.dataHora,
+        servicos: agendamento.servicos || 'Corte',
+        status: 'Pendente',
+        barber_id: barberId
       })
-      .map(ag => {
-        const cliente = data.clientes.find(c => c.id === ag.clienteId);
-        return { ...ag, cliente };
-      })
-      .sort((a, b) => new Date(a.dataHora) - new Date(b.dataHora));
+      .select()
+      .single();
+
+    if (error) throw error;
+    return mapAgendamento(data);
   },
 
-  addAgendamento: (barberId, agendamento) => {
-    const data = getDB();
-    const newAgendamento = {
-      id: 'ag-' + Date.now(),
-      clienteId: agendamento.clienteId,
-      dataHora: agendamento.dataHora,
-      servicos: agendamento.servicos || 'Corte',
-      status: 'Pendente',
-      barberId: barberId
-    };
-    data.agendamentos.push(newAgendamento);
-    saveDB(data);
-    return newAgendamento;
+  updateAgendamentoStatus: async (barberId, id, status) => {
+    const { data, error } = await supabase
+      .from('agendamentos')
+      .update({ status: status })
+      .eq('id', id)
+      .eq('barber_id', barberId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return mapAgendamento(data);
   },
 
-  updateAgendamentoStatus: (barberId, id, status) => {
-    const data = getDB();
-    const idx = data.agendamentos.findIndex(ag => ag.id === id && ag.barberId === barberId);
-    if (idx === -1) return null;
-    data.agendamentos[idx].status = status;
-    saveDB(data);
-    return data.agendamentos[idx];
-  },
+  deleteAgendamento: async (barberId, id) => {
+    const { error } = await supabase
+      .from('agendamentos')
+      .delete()
+      .eq('id', id)
+      .eq('barber_id', barberId);
 
-  deleteAgendamento: (barberId, id) => {
-    const data = getDB();
-    const exists = data.agendamentos.some(ag => ag.id === id && ag.barberId === barberId);
-    if (!exists) return false;
-
-    data.agendamentos = data.agendamentos.filter(ag => ag.id !== id);
-    saveDB(data);
+    if (error) throw error;
     return true;
   },
 
-  getStats: (barberId) => {
-    const data = getDB();
-    const barberClients = data.clientes.filter(c => c.barberId === barberId);
-    const totalClientes = barberClients.length;
-    
-    const barberClientIds = new Set(barberClients.map(c => c.id));
-    const barberAtendimentos = data.atendimentos.filter(a => barberClientIds.has(a.clienteId));
-    const totalAtendimentos = barberAtendimentos.length;
-    
-    const thisMonth = new Date().getMonth();
-    const thisYear = new Date().getFullYear();
-    const atendimentosMes = barberAtendimentos.filter(a => {
-      const d = new Date(a.data);
-      return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-    }).length;
+  getStats: async (barberId) => {
+    const [clientesRes, atendimentosRes, atendimentosMesRes] = await Promise.all([
+      supabase
+        .from('clientes')
+        .select('id', { count: 'exact', head: true })
+        .eq('barber_id', barberId),
+      supabase
+        .from('atendimentos')
+        .select('id, clientes!inner(barber_id)', { count: 'exact', head: true })
+        .eq('clientes.barber_id', barberId),
+      supabase
+        .from('atendimentos')
+        .select('id, clientes!inner(barber_id)', { count: 'exact', head: true })
+        .eq('clientes.barber_id', barberId)
+        .gte('data', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+    ]);
+
+    if (clientesRes.error) throw clientesRes.error;
+    if (atendimentosRes.error) throw atendimentosRes.error;
+    if (atendimentosMesRes.error) throw atendimentosMesRes.error;
 
     return {
-      totalClientes,
-      totalAtendimentos,
-      atendimentosMes
+      totalClientes: clientesRes.count || 0,
+      totalAtendimentos: atendimentosRes.count || 0,
+      atendimentosMes: atendimentosMesRes.count || 0
     };
   }
 };
