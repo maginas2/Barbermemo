@@ -28,6 +28,8 @@ const mapUser = (u) => {
     telefone: u.telefone || '',
     horaInicio: u.hora_inicio || '08:00',
     horaFim: u.hora_fim || '20:00',
+    modeloAtendimento: u.modelo_atendimento || 'agenda',
+    statusFila: u.status_fila || 'disponivel',
     servicosConfig: u.servicos_config || [
       { name: 'Corte', duration: 40, price: 'R$ 40,00' },
       { name: 'Barba', duration: 30, price: 'R$ 30,00' },
@@ -595,9 +597,20 @@ export const db = {
   getBarberPublicInfo: async (barberId) => {
     const { data, error } = await supabase
       .from('usuarios')
-      .select('nome, barbearia_name, hora_inicio, hora_fim, servicos_config, telefone')
+      .select('nome, barbearia_name, hora_inicio, hora_fim, servicos_config, telefone, modelo_atendimento')
       .eq('id', barberId)
       .eq('role', 'barbeiro')
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  },
+
+  getAgendamentoPublic: async (id) => {
+    const { data, error } = await supabase
+      .from('agendamentos')
+      .select('*, clientes(*)')
+      .eq('id', id)
       .maybeSingle();
 
     if (error) throw error;
@@ -647,6 +660,8 @@ export const db = {
         telefone: config.telefone,
         hora_inicio: config.horaInicio,
         hora_fim: config.horaFim,
+        modelo_atendimento: config.modeloAtendimento,
+        status_fila: config.statusFila,
         servicos_config: config.servicosConfig
       })
       .eq('id', barberId)
@@ -655,5 +670,32 @@ export const db = {
 
     if (error) throw error;
     return mapUser(data);
+  },
+
+  getBarbersInShop: async (barbeariaName) => {
+    if (!barbeariaName) return [];
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('id, nome, role, status_fila, hora_inicio, hora_fim, servicos_config, telefone, modelo_atendimento')
+      .eq('barbearia_name', barbeariaName)
+      .eq('role', 'barbeiro');
+
+    if (error) throw error;
+    return (data || []).map(mapUser);
+  },
+
+  getQueueForBarber: async (barberId) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const { data, error } = await supabase
+      .from('agendamentos')
+      .select('*, clientes(*)')
+      .eq('barber_id', barberId)
+      .in('status', ['Pendente', 'Confirmado'])
+      .gte('data_hora', `${todayStr}T00:00:00`)
+      .lte('data_hora', `${todayStr}T23:59:59`)
+      .order('data_hora', { ascending: true });
+
+    if (error) throw error;
+    return (data || []).map(mapAgendamento);
   }
 };

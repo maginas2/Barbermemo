@@ -469,13 +469,16 @@ export default function BarberLayout() {
                             <Clock className="w-3.5 h-3.5" />
                             {formatTime(ag.dataHora)}
                           </span>
-                          <span className={`text-[8px] font-bold px-1.5 rounded uppercase ${ag.status === 'Concluído'
+                           <span className={`text-[8px] font-bold px-1.5 rounded uppercase ${ag.status === 'Concluído'
                             ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
                             : ag.status === 'Confirmado'
                               ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
                               : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
                             }`}>
-                            {ag.status}
+                            {currentUser?.modeloAtendimento === 'fila'
+                              ? (ag.status === 'Pendente' ? 'Aguardando' : ag.status === 'Confirmado' ? 'Na Cadeira' : ag.status)
+                              : ag.status
+                            }
                           </span>
                         </div>
 

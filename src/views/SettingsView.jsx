@@ -31,6 +31,8 @@ export default function SettingsView() {
   };
 
   const [telefone, setTelefone] = useState(() => formatPhone(currentUser?.telefone || ''));
+  const [modeloAtendimento, setModeloAtendimento] = useState(currentUser?.modeloAtendimento || 'agenda');
+  const [statusFila, setStatusFila] = useState(currentUser?.statusFila || 'disponivel');
   const [horaInicio, setHoraInicio] = useState(currentUser?.horaInicio || '08:00');
   const [horaFim, setHoraFim] = useState(currentUser?.horaFim || '20:00');
   const [servicos, setServicos] = useState(() => currentUser?.servicosConfig || []);
@@ -130,6 +132,8 @@ export default function SettingsView() {
         telefone: cleanPhone,
         horaInicio,
         horaFim,
+        modeloAtendimento,
+        statusFila,
         servicosConfig: servicos
       });
 
@@ -192,6 +196,47 @@ export default function SettingsView() {
                 onChange={handlePhoneChange}
                 className="w-full bg-barber-dark border border-barber-border rounded-lg py-2 px-3 text-xs text-zinc-200 placeholder:text-zinc-700"
               />
+            </div>
+          </div>
+
+          {/* Service Model Config */}
+          <div className="bg-barber-card border border-barber-border rounded-xl p-5 space-y-4 shadow-md">
+            <div className="flex items-center gap-2 text-barber-accent-light select-none">
+              <Settings className="w-4 h-4" />
+              <h3 className="text-xs font-bold uppercase tracking-wider">Modelo de Atendimento</h3>
+            </div>
+            <p className="text-[11px] text-zinc-500 leading-relaxed select-none">
+              Escolha se prefere trabalhar por hora marcada (Agenda) ou por ordem de chegada virtual (Fila de Espera em Tempo Real).
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10.5px] font-semibold text-zinc-400 font-sans block">Modelo</label>
+                <select
+                  value={modeloAtendimento}
+                  onChange={(e) => setModeloAtendimento(e.target.value)}
+                  className="w-full bg-barber-dark border border-barber-border rounded-lg py-2 px-3 text-xs text-zinc-200"
+                >
+                  <option value="agenda">Agendamento por Horário (Agenda)</option>
+                  <option value="fila">Fila de Espera (Ordem de Chegada)</option>
+                </select>
+              </div>
+
+              {modeloAtendimento === 'fila' && (
+                <div className="space-y-1.5">
+                  <label className="text-[10.5px] font-semibold text-zinc-400 font-sans block">Status da Fila</label>
+                  <select
+                    value={statusFila}
+                    onChange={(e) => setStatusFila(e.target.value)}
+                    className="w-full bg-barber-dark border border-barber-border rounded-lg py-2 px-3 text-xs text-zinc-200"
+                  >
+                    <option value="disponivel">🟢 Disponível</option>
+                    <option value="almoco">🟡 Em Horário de Almoço</option>
+                    <option value="pausa">🟠 Em Pausa / Café</option>
+                    <option value="ausente">🔴 Ausente / Indisponível</option>
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 

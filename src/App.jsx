@@ -14,6 +14,12 @@ import CalendarView from './components/CalendarView';
 import MetricsView from './components/MetricsView';
 import PublicBookingView from './views/PublicBookingView';
 import SettingsView from './views/SettingsView';
+import QueueDashboard from './views/QueueDashboard';
+
+const ScheduleRouteWrapper = () => {
+  const { currentUser } = useAuth();
+  return currentUser?.modeloAtendimento === 'fila' ? <QueueDashboard /> : <CalendarView />;
+};
 
 function AppRoutes() {
   const { currentUser, authLoading } = useAuth();
@@ -72,7 +78,7 @@ function AppRoutes() {
         <Route path="clientes/:id/atendimentos/novo" element={<NewAttendanceForm />} />
 
         {/* Schedule & Appointments */}
-        <Route path="agendamentos" element={<CalendarView />} />
+        <Route path="agendamentos" element={<ScheduleRouteWrapper />} />
         <Route path="agendamentos/novo" element={<NewAppointmentForm />} />
 
         {/* Financial & Customer Retention Reports */}
