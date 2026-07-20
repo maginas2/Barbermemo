@@ -25,6 +25,8 @@ const mapUser = (u) => {
     email: u.email,
     barbeariaName: u.barbearia_name,
     role: u.role,
+    cpfCnpj: u.cpf_cnpj || '',
+    asaasCustomerId: u.asaas_customer_id || null,
     telefone: u.telefone || '',
     horaInicio: u.hora_inicio || '08:00',
     horaFim: u.hora_fim || '20:00',
@@ -192,6 +194,19 @@ export const db = {
       profile = insertedData;
     }
 
+    // cpf_cnpj isn't part of the auth signUp metadata, so persist it as a
+    // follow-up update once the profile row (created by the DB trigger or
+    // the manual fallback above) definitely exists.
+    if (barber.cpfCnpj) {
+      const { data: withCpf, error: cpfError } = await supabase
+        .from('usuarios')
+        .update({ cpf_cnpj: barber.cpfCnpj.replace(/\D/g, '') })
+        .eq('id', profile.id)
+        .select()
+        .single();
+      if (!cpfError) profile = withCpf;
+    }
+
     return mapUser(profile);
   },
 
@@ -216,7 +231,8 @@ export const db = {
       .update({
         nome: fields.nome,
         email: cleanEmail,
-        barbearia_name: fields.barbeariaName
+        barbearia_name: fields.barbeariaName,
+        cpf_cnpj: fields.cpfCnpj !== undefined ? (fields.cpfCnpj ? fields.cpfCnpj.replace(/\D/g, '') : null) : undefined
       })
       .eq('id', id)
       .select()
@@ -224,6 +240,41 @@ export const db = {
 
     if (error) throw error;
     return mapUser(data);
+  },
+
+  adminSyncBarbeiroAsaas: async (barberId) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Sessão expirada. Faça login novamente.');
+
+    const res = await fetch('/api/asaas/sync-customer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({ barberId })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao sincronizar barbeiro com o Asaas.');
+    return mapUser(data.barbeiro);
+  },
+
+  adminSyncAllBarbeirosAsaas: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Sessão expirada. Faça login novamente.');
+
+    const res = await fetch('/api/asaas/sync-all', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`
+      }
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao sincronizar barbeiros com o Asaas.');
+    return data;
   },
 
   adminDeleteBarbeiro: async (id) => {
